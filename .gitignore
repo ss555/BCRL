@@ -1,0 +1,6 @@
+*.png
+*.npy
+__pycache__
+logs
+checkpoints/
+checkpoints_old/
