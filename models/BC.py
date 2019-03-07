@@ -368,7 +368,7 @@ if __name__ == '__main__':
                             t_ind = traj
                             time_ind = i
                             if time_ind < 4:
-                                to_stack = [ np.zeros(3+3+4+1) for _ in range(5 - time_ind - 1)]
+                                to_stack = [ np.zeros(b.dset.proprio_size) for _ in range(5 - time_ind - 1)]
 
                                 if time_ind == 0:
                                     
@@ -384,7 +384,7 @@ if __name__ == '__main__':
                                     eval_proprio[t_ind][time_ind -i] for i in range(5 - 1, -1, -1)
                                 ])
 
-                            if proprio_stack.shape[0] != (3+3+4+1)*5:
+                            if proprio_stack.shape[0] != (b.dset.proprio_size)*5:
                                 continue
   
                             img, proprio = eval_images[traj][i], proprio_stack
@@ -403,7 +403,7 @@ if __name__ == '__main__':
                                     prev_rotation = RU.euler2quat( euler_rotation)
                             else:
                                 prev_rotation = eval_rotation[traj][i-1]
-                            curr_rotation = eval_rotation[traj][i]
+                            curr_rotation = np.array(eval_rotation[traj][i])
 
                             if curr_rotation.shape == (3,3):
                                 curr_rotation = RU.mat2euler(curr_rotation)
