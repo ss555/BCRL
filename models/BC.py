@@ -284,10 +284,10 @@ if __name__ == '__main__':
 
         b = BC(dataset_dir, (84,84,3), (3+3+4,), (8,), 32, real=True, use_resnet=use_resnet)
 
-        images = b.dset.images[:-1].copy()
-        proprio = b.dset.proprio[:-1].copy()
-        dpos = b.dset.dpos[:-1].copy()
-        rotation = b.dset.rotation[:-1].copy()
+        images = b.dset.eval_images
+        proprio = b.dset.eval_proprio
+        dpos = b.dset.eval_dpos
+        rotation = b.dset.eval_rotation
 
 
     if not os.path.isdir(log_dir):

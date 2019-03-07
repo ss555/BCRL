@@ -102,6 +102,12 @@ class RoboTurkDataset:
             self.rotation = np.load(self.dataset_path + prefix + 'rotation.npy')
             self.gripper = np.load(self.dataset_path + prefix + 'grasp.npy')
 
+            self.eval_images = self.images[-self.n_valid:]
+            self.eval_proprio = self.proprio[-self.n_valid:]
+            self.eval_dpos = self.dpos[-self.n_valid:]
+            self.eval_rotation = self.rotation[-self.n_valid:]
+            self.eval_gripper = self.gripper[-self.n_valid:]
+
             self.images = self.images[:-self.n_valid]
             self.proprio = self.proprio[:-self.n_valid]
             self.dpos = self.dpos[:-self.n_valid]
