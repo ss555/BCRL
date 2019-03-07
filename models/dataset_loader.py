@@ -96,7 +96,7 @@ class RoboTurkDataset:
 
             prefix = '/real_' if self.real else '/sim_'
             encoding = 'bytes' if self.real else 'ASCII'
-            self.images = np.load(self.dataset_path + prefix + 'images.npy', encoding=encoding)
+            self.images = np.load(self.dataset_path + prefix + 'image.npy', encoding=encoding)
             self.proprio = np.load(self.dataset_path + prefix + 'proprio.npy', encoding=encoding)
             self.dpos = np.load(self.dataset_path + prefix + 'dpos.npy')
             self.rotation = np.load(self.dataset_path + prefix + 'rotation.npy')
@@ -156,7 +156,7 @@ class RoboTurkDataset:
                     prev_rotation = RU.euler2quat(euler_rotation)
             else:
                 prev_rotation = self.rotation[t_ind][time_ind-1]
-            curr_rotation = self.rotation[t_ind][time_ind]
+            curr_rotation = np.asarray(self.rotation[t_ind][time_ind])
 
             if curr_rotation.shape == (3,3):
                 curr_rotation = RU.mat2euler(curr_rotation)

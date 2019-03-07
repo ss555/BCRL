@@ -284,10 +284,10 @@ if __name__ == '__main__':
 
         b = BC(dataset_dir, (84,84,3), (3+3+4,), (8,), 32, real=True, use_resnet=use_resnet)
 
-        images = b.dset.eval_images
-        proprio = b.dset.eval_proprio
-        dpos = b.dset.eval_dpos
-        rotation = b.dset.eval_rotation
+        eval_images = b.dset.eval_images
+        eval_proprio = b.dset.eval_proprio
+        eval_dpos = b.dset.eval_dpos
+        eval_rotation = b.dset.eval_rotation
 
 
     if not os.path.isdir(log_dir):
@@ -301,8 +301,8 @@ if __name__ == '__main__':
 
     lr = 0.001
     #lr = tf.train.cosine_decay_restarts(0.001, global_step, 10000)
-    optimizer = tf.contrib.opt.AdamWOptimizer(0.001, learning_rate=lr) #better weight decay probably
-    #optimizer = tf.train.AdamOptimizer()
+    #optimizer = tf.contrib.opt.AdamWOptimizer(0.001, learning_rate=lr) #better weight decay probably
+    optimizer = tf.train.AdamOptimizer()
 
     saver = tf.train.Saver(max_to_keep=5)
     train_op = optimizer.minimize(b.loss)
