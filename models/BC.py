@@ -116,10 +116,10 @@ class BC:
                 else:
                     hid = tf.layers.conv2d(self.inputs['image'], 16, kernel_size=2, padding='same', activation=tf.nn.relu, name='conv1')
 
-                #pool1 = tf.layers.max_pooling2d(inputs=hid, pool_size=[2, 2], strides=2)
+                hid = tf.layers.max_pooling2d(inputs=hid, pool_size=[2, 2], strides=2)
                 hid = tf.layers.conv2d(hid, 32, kernel_size=2, padding='same', activation=tf.nn.relu, name='conv2')
 
-                #pool2 = tf.layers.max_pooling2d(inputs=hid, pool_size=[2, 2], strides=2)
+                hid = tf.layers.max_pooling2d(inputs=hid, pool_size=[2, 2], strides=2)
                 if not eval:
                     self.spatial_softmax = tf.contrib.layers.spatial_softmax(hid)
                     self.eef_predict = tf.layers.dense(self.spatial_softmax, 3, name='eef_pos_predict')
@@ -157,7 +157,7 @@ class BC:
 
             else:
                 hid = tf.layers.dense(self.concatted, 512, name='fc1', activation=tf.nn.relu)
-                #hid = tf.layers.dropout(hid, rate=0.3)
+                hid = tf.layers.dropout(hid, rate=0.3)
                 hid = tf.layers.dense(hid, 256, name='fc2', activation=tf.nn.relu)
 
                 self.delta_pos = tf.layers.dense(hid, 3, activation=tf.nn.tanh, name='fc_pos')
@@ -305,7 +305,7 @@ if __name__ == '__main__':
         thread = None
         import pickle
 
-        b = BC(dataset_dir, (img_size,img_size,3), (3+3+4,), (8,), 32, real=True, use_resnet=use_resnet)
+        b = BC(dataset_dir, (img_size,img_size,3), (18,), (8,), 32, real=True, use_resnet=use_resnet)
 
         eval_images = b.dset.eval_images
         eval_proprio = b.dset.eval_proprio
@@ -322,10 +322,12 @@ if __name__ == '__main__':
     global_step = tf.train.get_or_create_global_step()
     global_step = tf.assign_add(global_step, 1)
 
-    lr = 0.001
+    #lr = 0.001
+    global_step = tf.Variable(0, trainable=False)
+    lr = tf.train.exponential_decay(0.001, global_step, 10000, 0.96, staircase=True) 
     #lr = tf.train.cosine_decay_restarts(0.001, global_step, 10000)
     #optimizer = tf.contrib.opt.AdamWOptimizer(0.001, learning_rate=lr) #better weight decay probably
-    optimizer = tf.train.AdamOptimizer()
+    optimizer = tf.train.AdamOptimizer(learning_rate=lr)
 
     saver = tf.train.Saver(max_to_keep=5)
     train_op = optimizer.minimize(b.loss)

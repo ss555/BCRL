@@ -97,7 +97,7 @@ class RoboTurkDataset:
             prefix = '/real_' if self.real else '/sim_'
             encoding = 'bytes' if self.real else 'ASCII'
 
-            np.random.seed(0)
+            np.random.seed(1)
 
             self.images = np.load(self.dataset_path + prefix + 'image.npy', encoding=encoding)
             self.proprio = np.load(self.dataset_path + prefix + 'joint_states.npy', encoding=encoding)
@@ -107,7 +107,7 @@ class RoboTurkDataset:
             self.gripper = np.load(self.dataset_path + prefix + 'grasp.npy')
 
             indices = np.arange(len(self.images))
-            self.images = np.random.shuffle(indices)
+            np.random.shuffle(indices)
 
             self.images = [self.images[i] for i in indices]
             self.proprio = [self.proprio[i] for i in indices]
@@ -123,12 +123,12 @@ class RoboTurkDataset:
             self.eval_gripper = np.array(self.gripper[-self.n_valid:])
             self.eval_eef = np.array(self.eef[-self.n_valid:])
 
-            self.images = self.images[:-self.n_valid]
-            self.proprio = self.proprio[:-self.n_valid]
-            self.dpos = self.dpos[:-self.n_valid]
-            self.rotation = self.rotation[:-self.n_valid]
-            self.gripper = self.gripper[:-self.n_valid]
-            self.eef = self.eef[:-self.n_valid]
+            self.images = np.array(self.images[:-self.n_valid])
+            self.proprio = np.array(self.proprio[:-self.n_valid])
+            self.dpos = np.array(self.dpos[:-self.n_valid])
+            self.rotation = np.array(self.rotation[:-self.n_valid])
+            self.gripper = np.array(self.gripper[:-self.n_valid])
+            self.eef = np.array(self.eef[:-self.n_valid])
 
             self.proprio_size = self.proprio[0][0].shape[0]
             self.eef_size = self.eef[0][0].shape[0]
