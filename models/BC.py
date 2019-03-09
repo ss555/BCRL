@@ -67,6 +67,7 @@ class BC:
         tf.summary.scalar('L1', self.l1)
         tf.summary.scalar('LC', self.lc)
         tf.summary.scalar('LG', self.lg)
+        tf.summary.scalar('LEEF', self.leef)
         tf.summary.scalar('LRegularization', self.regularization_loss)
         tf.summary.scalar('TotalLoss', self.loss)
 
@@ -111,13 +112,22 @@ class BC:
                     self.image_obs = tf.placeholder(shape=(1, self.image_size[0], self.image_size[1], self.image_size[2]),
                                                     dtype=tf.float32, name='image_input')
 
-                    hid = tf.layers.conv2d(self.image_obs, 16, 8, 4, activation=tf.nn.relu, name='conv1')
+                    hid = tf.layers.conv2d(self.image_obs, 16, kernel_size=2, padding='same', activation=tf.nn.relu, name='conv1')
                 else:
-                    hid = tf.layers.conv2d(self.inputs['image'], 16, 8, 4, activation=tf.nn.relu, name='conv1')
+                    hid = tf.layers.conv2d(self.inputs['image'], 16, kernel_size=2, padding='same', activation=tf.nn.relu, name='conv1')
 
-                hid = tf.layers.conv2d(hid                 , 32, 4, 2, activation=tf.nn.relu, name='conv2')
+                #pool1 = tf.layers.max_pooling2d(inputs=hid, pool_size=[2, 2], strides=2)
+                hid = tf.layers.conv2d(hid, 32, kernel_size=2, padding='same', activation=tf.nn.relu, name='conv2')
 
-                hid = tf.layers.flatten(hid, name='flatten')
+                #pool2 = tf.layers.max_pooling2d(inputs=hid, pool_size=[2, 2], strides=2)
+                if not eval:
+                    self.spatial_softmax = tf.contrib.layers.spatial_softmax(hid)
+                    self.eef_predict = tf.layers.dense(self.spatial_softmax, 3, name='eef_pos_predict')
+                    inpt = self.spatial_softmax
+                else:
+                    inpt = tf.contrib.layers.spatial_softmax(hid)
+
+                hid = tf.layers.flatten(inpt, name='flatten')
                 hid = tf.layers.dense(hid, 256, name='fc_conv_out', activation=tf.nn.relu)
 
                 if eval:
@@ -128,13 +138,15 @@ class BC:
         with tf.variable_scope('concat', reuse=eval):
             if eval:
                 self.proprio_obs = tf.placeholder(shape=(1, self.proprio_size[0]), dtype=tf.float32, name='proprio_input')
+                #self.eval_concatted = self.proprio_obs
                 self.eval_concatted = tf.concat([self.eval_conv_out, self.proprio_obs], -1, name='EvalFullInputs')
             else:
+                #self.concatted = self.inputs['proprio']
                 self.concatted = tf.concat([self.conv_out, self.inputs['proprio']], -1, name='FullInputs')
 
         with tf.variable_scope('PredictAction', reuse=eval):
             if eval:
-                hid = tf.layers.dense(self.eval_concatted, 256, name='fc1', activation=tf.nn.relu)
+                hid = tf.layers.dense(self.eval_concatted, 512, name='fc1', activation=tf.nn.relu)
                 hid = tf.layers.dense(hid, 256, name='fc2', activation=tf.nn.relu)
 
                 self.eval_delta_pos = tf.layers.dense(hid, 3, activation=tf.nn.tanh, name='fc_pos')
@@ -144,7 +156,8 @@ class BC:
                 self.eval_gripper_output = tf.layers.dense(hid, 1, name='fc_gripper')
 
             else:
-                hid = tf.layers.dense(self.concatted, 256, name='fc1', activation=tf.nn.relu)
+                hid = tf.layers.dense(self.concatted, 512, name='fc1', activation=tf.nn.relu)
+                #hid = tf.layers.dropout(hid, rate=0.3)
                 hid = tf.layers.dense(hid, 256, name='fc2', activation=tf.nn.relu)
 
                 self.delta_pos = tf.layers.dense(hid, 3, activation=tf.nn.tanh, name='fc_pos')
@@ -169,12 +182,16 @@ class BC:
         gt_delta_pos = self.inputs['delta_eef_pos']
         gt_delta_rotation = self.inputs['delta_eef_rotation']
         gt_gripper = tf.reshape(self.inputs['gripper'], (-1, 1))
+        gt_eef = self.inputs['eef']
+
+        gt_eef_pos = gt_eef[:,:3]
 
 
         pred_delta_pos = self.delta_pos
         pred_delta_rotation = self.delta_quat
         pred_gripper = tf.reshape(self.gripper_output, (-1,1))
 
+        self.leef = tf.losses.mean_squared_error(gt_eef_pos, self.eef_predict)
         self.l2 = tf.losses.mean_squared_error(gt_delta_pos, pred_delta_pos)
 
         gt_delta_rotation = tf.nn.l2_normalize(gt_delta_rotation, axis=-1)
@@ -189,9 +206,9 @@ class BC:
         #self.lg = tf.losses.sigmoid_cross_entropy(gt_gripper, pred_gripper)
         self.lg = tf.losses.absolute_difference(gt_gripper, pred_gripper)  # sim is not binary
 
-        self.loss = 10 * ( 1. * self.l2 + 1* self.l1 + 1.0 * self.lg + 1. * self.lc )
+        self.loss = ( 1. * self.l2 + 1* self.l1 + 1.0 * self.lg + 1.* self.lc + 1. * self.leef)
 
-        self.regularization_loss = 0.001 * tf.reduce_sum([
+        self.regularization_loss = 0.01 * tf.reduce_sum([
             tf.nn.l2_loss(var) for var in tf.trainable_variables() if 'kernel' in var.name
         ])
 
@@ -218,6 +235,7 @@ def restore_config(path_to_config):
 
 
 if __name__ == '__main__':
+    import time
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--real', action='store_true')
@@ -239,6 +257,11 @@ if __name__ == '__main__':
         raise ValueError('You do not have the tensorflow models repo cloned and in your PYTHONPATH')
     if not args.real and not SIM_CAPABLE:
         raise ValueError('You do not surreal or robosuite and thus cannot work in sim')
+
+    if args.use_resnet:
+        img_size = 224
+    else:
+        img_size = 84
 
     if not args.real:
         """
@@ -266,7 +289,7 @@ if __name__ == '__main__':
         thread.start()
         """
 
-        images = np.load('{}/sim_images.npy'.format(dataset_dir))
+        images = np.load('{}/sim_image.npy'.format(dataset_dir))
         proprio = np.load('{}/sim_proprio.npy'.format(dataset_dir))
         dpos = np.load('{}/sim_dpos.npy'.format(dataset_dir))
         rotation = np.load('{}/sim_rotation.npy'.format(dataset_dir))
@@ -277,12 +300,12 @@ if __name__ == '__main__':
         eval_rotation = rotation[-1:]
 
 
-        b = BC(dataset_dir, (84,84,3), (3+4+3+1,), (8,), 32, real=False, use_resnet=use_resnet)
+        b = BC(dataset_dir, (img_size,img_size,3), (30,), (8,), 32, real=False, use_resnet=use_resnet)
     else:
         thread = None
         import pickle
 
-        b = BC(dataset_dir, (84,84,3), (3+3+4,), (8,), 32, real=True, use_resnet=use_resnet)
+        b = BC(dataset_dir, (img_size,img_size,3), (3+3+4,), (8,), 32, real=True, use_resnet=use_resnet)
 
         eval_images = b.dset.eval_images
         eval_proprio = b.dset.eval_proprio
@@ -343,20 +366,26 @@ if __name__ == '__main__':
                     ob = env.reset()
                     window = collections.deque(maxlen=5)
                     for _ in range(5):
-                        window.append(np.zeros(3+3+4+1))
+                        window.append(np.zeros(b.dset.proprio_size))
 
                     for i in range(200):
+                        start = time.time()
                         aux = env.unwrapped._get_observation()
-
-                        window.append(np.concatenate([aux['eef_pos'], aux['eef_quat'], aux['gripper_qvel'], aux['gripper_qpos']]))
+                        #print(aux)
+                        window.append(np.array(aux['robot-state']).ravel())
+                        #window.append(np.concatenate([aux['eef_pos'], aux['eef_quat'], aux['gripper_qvel'], aux['gripper_qpos']]))
 
                         dpos, drot, gripper = b.get_action([np.transpose(ob['image'],(0,1,2))], np.array(window).reshape(1, -1))
-                        drot = np.array([0.,0.,0.,1.])
+                        #drot = np.array([0.,0.,0.,1.])
                         drot = np.ravel(drot)
                         drot /= np.linalg.norm(drot)
                         a = np.concatenate([np.ravel(dpos), drot, np.ravel(gripper)])
 
                         ob, r, _, _ = env.step(a)
+
+                        elapsed = time.time() - start
+                        print(elapsed, )
+                        time.sleep(max(start + 1./10 - time.time(), 0))
                         reward += r
                     print('Reward: {}'.format(reward))
                 else:
@@ -388,7 +417,7 @@ if __name__ == '__main__':
                                 continue
   
                             img, proprio = eval_images[traj][i], proprio_stack
-                            img = cv2.resize(img, (84,84))
+                            img = cv2.resize(img, (img_size,img_size))
                             img = img.astype(np.float32)
 
                             dpos, drot, gripper = b.get_action([img], [proprio])

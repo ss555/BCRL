@@ -98,6 +98,7 @@ class RoboTurkDataset:
             encoding = 'bytes' if self.real else 'ASCII'
             self.images = np.load(self.dataset_path + prefix + 'image.npy', encoding=encoding)
             self.proprio = np.load(self.dataset_path + prefix + 'proprio.npy', encoding=encoding)
+            self.eef = np.load(self.dataset_path  + prefix + 'eef.npy', encoding=encoding)
             self.dpos = np.load(self.dataset_path + prefix + 'dpos.npy')
             self.rotation = np.load(self.dataset_path + prefix + 'rotation.npy')
             self.gripper = np.load(self.dataset_path + prefix + 'grasp.npy')
@@ -107,14 +108,17 @@ class RoboTurkDataset:
             self.eval_dpos = np.array(self.dpos[-self.n_valid:])
             self.eval_rotation = np.array(self.rotation[-self.n_valid:])
             self.eval_gripper = np.array(self.gripper[-self.n_valid:])
+            self.eval_eef = np.array(self.eef[-self.n_valid:])
 
             self.images = self.images[:-self.n_valid]
             self.proprio = self.proprio[:-self.n_valid]
             self.dpos = self.dpos[:-self.n_valid]
             self.rotation = self.rotation[:-self.n_valid]
             self.gripper = self.gripper[:-self.n_valid]
+            self.eef = self.eef[:-self.n_valid]
 
             self.proprio_size = self.proprio[0][0].shape[0]
+            self.eef_size = self.eef[0][0].shape[0]
 
     def _dataset_generator(self):
 
@@ -174,6 +178,8 @@ class RoboTurkDataset:
             image = self.images[t_ind][time_ind]
             image = cv2.resize(image, self.image_size[:-1])
 
+            eef = self.eef[t_ind][time_ind]
+
             gripper = np.array(self.gripper[t_ind][time_ind]).reshape(1)
 
             yield {
@@ -182,6 +188,7 @@ class RoboTurkDataset:
                 'gripper': gripper,
                 'delta_eef_pos': np.array(delta_eef_pos),
                 'delta_eef_rotation': np.array(delta_eef_quat),
+                'eef': eef,
             }
 
 
@@ -194,6 +201,7 @@ class RoboTurkDataset:
                 'gripper': tf.float32,
                 'delta_eef_pos': tf.float32,
                 'delta_eef_rotation': tf.float32,
+                'eef': tf.float32,
             }
             output_shapes = {
                 'image': self.image_size,
@@ -201,6 +209,7 @@ class RoboTurkDataset:
                 'gripper': 1,
                 'delta_eef_pos': (3,),
                 'delta_eef_rotation': (4,),
+                'eef': (self.eef_size,)
             }
 
             self.tf_dataset = tf.data.Dataset.from_generator(self._dataset_generator,
