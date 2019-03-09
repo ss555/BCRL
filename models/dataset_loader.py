@@ -106,7 +106,6 @@ class RoboTurkDataset:
             self.rotation = np.load(self.dataset_path + prefix + 'rotation.npy')
             self.gripper = np.load(self.dataset_path + prefix + 'grasp.npy')
             self.goals = np.zeros((len(self.images), len(self.images[0]), 3))
-            print(self.gripper.shape)
             indices = np.arange(len(self.images))
             np.random.shuffle(indices)
 
@@ -119,9 +118,6 @@ class RoboTurkDataset:
 
             for ind in range(len(self.gripper)):
                 for t in range(len(self.gripper[ind])):
-                    print(self.gripper.shape)
-                    print(self.gripper[ind].shape, self.gripper[ind][t].shape)
-                    #print(self.gripper[ind][t])
                     if self.gripper[ind][t] <= 0.0001:
                         self.goals[ind][t] = self.eef[ind][t][:3]
                         break
