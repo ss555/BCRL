@@ -108,6 +108,7 @@ class RoboTurkDataset:
 
             self.images = np.random.shuffle(self.images)
             self.proprio = np.random.shuffle(self.proprio)
+            self.eef = np.random.shuffle(self.eef)
             self.dpos = np.random.shuffle(self.dpos)
             self.rotation = np.random.shuffle(self.rotation)
             self.gripper = np.random.shuffle(self.gripper)
