@@ -295,19 +295,12 @@ if __name__ == '__main__':
         thread = threading.Thread(target=thunk)
         thread.start()
         """
-
-        images = np.load('{}/sim_image.npy'.format(dataset_dir))
-        proprio = np.load('{}/sim_proprio.npy'.format(dataset_dir))
-        dpos = np.load('{}/sim_dpos.npy'.format(dataset_dir))
-        rotation = np.load('{}/sim_rotation.npy'.format(dataset_dir))
-
-        eval_images = images[-1:]
-        eval_proprio = proprio[-1:]
-        eval_dpos = dpos[-1:]
-        eval_rotation = rotation[-1:]
-
-
         b = BC(dataset_dir, (img_size,img_size,3), (30,), (8,), 32, real=False, use_resnet=use_resnet)
+
+        eval_images = b.dset.eval_images
+        eval_proprio = b.dset.eval_proprio
+        eval_dpos = b.dset.eval_dpos
+        eval_rotation = b.dset.eval_rotation
     else:
         thread = None
         import pickle
