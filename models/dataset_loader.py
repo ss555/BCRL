@@ -105,16 +105,26 @@ class RoboTurkDataset:
             self.dpos = np.load(self.dataset_path + prefix + 'dpos.npy')
             self.rotation = np.load(self.dataset_path + prefix + 'rotation.npy')
             self.gripper = np.load(self.dataset_path + prefix + 'grasp.npy')
-
+            self.goals = np.zeros((len(self.images), len(self.images[0]), 3))
+            print(self.gripper.shape)
             indices = np.arange(len(self.images))
-            self.images = np.random.shuffle(indices)
+            np.random.shuffle(indices)
 
-            self.images = [self.images[i] for i in indices]
-            self.proprio = [self.proprio[i] for i in indices]
-            self.eef = [self.eef[i] for i in indices]
-            self.dpos = [self.dpos[i] for i in indices]
-            self.rotation = [self.rotation[i] for i in indices]
-            self.gripper = [self.gripper[i] for i in indices]
+            self.images = self.images[indices]
+            self.proprio = self.proprio[indices]
+            self.eef = self.eef[indices]
+            self.dpos = self.dpos[indices]
+            self.rotation = self.rotation[indices]
+            self.gripper = self.gripper[indices]
+
+            for ind in range(len(self.gripper)):
+                for t in range(len(self.gripper[ind])):
+                    print(self.gripper.shape)
+                    print(self.gripper[ind].shape, self.gripper[ind][t].shape)
+                    #print(self.gripper[ind][t])
+                    if self.gripper[ind][t] <= 0.0001:
+                        self.goals[ind][t] = self.eef[ind][t][:3]
+                        break
 
             self.eval_images = np.array(self.images[-self.n_valid:])
             self.eval_proprio = np.array(self.proprio[-self.n_valid:])
@@ -122,6 +132,7 @@ class RoboTurkDataset:
             self.eval_rotation = np.array(self.rotation[-self.n_valid:])
             self.eval_gripper = np.array(self.gripper[-self.n_valid:])
             self.eval_eef = np.array(self.eef[-self.n_valid:])
+            self.eval_goals = np.array(self.goals[-self.n_valid:])
 
             self.images = self.images[:-self.n_valid]
             self.proprio = self.proprio[:-self.n_valid]
@@ -129,6 +140,7 @@ class RoboTurkDataset:
             self.rotation = self.rotation[:-self.n_valid]
             self.gripper = self.gripper[:-self.n_valid]
             self.eef = self.eef[:-self.n_valid]
+            self.goals = self.goals[:-self.n_valid]
 
             self.proprio_size = self.proprio[0][0].shape[0]
             self.eef_size = self.eef[0][0].shape[0]
@@ -192,6 +204,7 @@ class RoboTurkDataset:
             image = cv2.resize(image, self.image_size[:-1])
 
             eef = self.eef[t_ind][time_ind]
+            goal = self.goals[t_ind][time_ind]
 
             gripper = np.array(self.gripper[t_ind][time_ind]).reshape(1)
 
@@ -202,6 +215,7 @@ class RoboTurkDataset:
                 'delta_eef_pos': np.array(delta_eef_pos),
                 'delta_eef_rotation': np.array(delta_eef_quat),
                 'eef': eef,
+                'goal': goal,
             }
 
 
@@ -215,6 +229,7 @@ class RoboTurkDataset:
                 'delta_eef_pos': tf.float32,
                 'delta_eef_rotation': tf.float32,
                 'eef': tf.float32,
+                'goal': tf.float32
             }
             output_shapes = {
                 'image': self.image_size,
@@ -222,7 +237,8 @@ class RoboTurkDataset:
                 'gripper': 1,
                 'delta_eef_pos': (3,),
                 'delta_eef_rotation': (4,),
-                'eef': (self.eef_size,)
+                'eef': (self.eef_size,),
+                'goal': (3,),
             }
 
             self.tf_dataset = tf.data.Dataset.from_generator(self._dataset_generator,

@@ -68,6 +68,8 @@ class BC:
         tf.summary.scalar('LC', self.lc)
         tf.summary.scalar('LG', self.lg)
         tf.summary.scalar('LEEF', self.leef)
+        tf.summary.scalar('LGOAL', self.lgoal)
+
         tf.summary.scalar('LRegularization', self.regularization_loss)
         tf.summary.scalar('TotalLoss', self.loss)
 
@@ -123,6 +125,7 @@ class BC:
                 if not eval:
                     self.spatial_softmax = tf.contrib.layers.spatial_softmax(hid)
                     self.eef_predict = tf.layers.dense(self.spatial_softmax, 3, name='eef_pos_predict')
+                    self.goal_predict = tf.layers.dense(self.spatial_softmax, 3, name='eef_goal_pos_predict')
                     inpt = self.spatial_softmax
                 else:
                     inpt = tf.contrib.layers.spatial_softmax(hid)
@@ -183,8 +186,10 @@ class BC:
         gt_delta_rotation = self.inputs['delta_eef_rotation']
         gt_gripper = tf.reshape(self.inputs['gripper'], (-1, 1))
         gt_eef = self.inputs['eef']
+        gt_goal = self.inputs['goal']
 
         gt_eef_pos = gt_eef[:,:3]
+
 
 
         pred_delta_pos = self.delta_pos
@@ -192,6 +197,8 @@ class BC:
         pred_gripper = tf.reshape(self.gripper_output, (-1,1))
 
         self.leef = tf.losses.mean_squared_error(gt_eef_pos, self.eef_predict)
+        self.lgoal = tf.losses.mean_squared_error(gt_goal, self.goal_predict)
+
         self.l2 = tf.losses.mean_squared_error(gt_delta_pos, pred_delta_pos)
 
         gt_delta_rotation = tf.nn.l2_normalize(gt_delta_rotation, axis=-1)
@@ -206,7 +213,7 @@ class BC:
         #self.lg = tf.losses.sigmoid_cross_entropy(gt_gripper, pred_gripper)
         self.lg = tf.losses.absolute_difference(gt_gripper, pred_gripper)  # sim is not binary
 
-        self.loss = ( 1. * self.l2 + 1* self.l1 + 1.0 * self.lg + 1.* self.lc + 1. * self.leef)
+        self.loss = ( 1. * self.l2 + 1* self.l1 + 1.0 * self.lg + 1.* self.lc + 1. * self.leef + 1. * self.lgoal)
 
         self.regularization_loss = 0.01 * tf.reduce_sum([
             tf.nn.l2_loss(var) for var in tf.trainable_variables() if 'kernel' in var.name
