@@ -96,11 +96,20 @@ class RoboTurkDataset:
 
             prefix = '/real_' if self.real else '/sim_'
             encoding = 'bytes' if self.real else 'ASCII'
+
+            np.random.seed(0)
+
             self.images = np.load(self.dataset_path + prefix + 'image.npy', encoding=encoding)
-            self.proprio = np.load(self.dataset_path + prefix + 'proprio.npy', encoding=encoding)
+            self.proprio = np.load(self.dataset_path + prefix + 'joint_states.npy', encoding=encoding)
             self.dpos = np.load(self.dataset_path + prefix + 'dpos.npy')
             self.rotation = np.load(self.dataset_path + prefix + 'rotation.npy')
             self.gripper = np.load(self.dataset_path + prefix + 'grasp.npy')
+
+            self.images = np.random.shuffle(self.images)
+            self.proprio = np.random.shuffle(self.proprio)
+            self.dpos = np.random.shuffle(self.dpos)
+            self.rotation = np.random.shuffle(self.rotation)
+            self.gripper = np.random.shuffle(self.gripper)
 
             self.eval_images = np.array(self.images[-self.n_valid:])
             self.eval_proprio = np.array(self.proprio[-self.n_valid:])
@@ -142,7 +151,7 @@ class RoboTurkDataset:
                 ])
 
             if proprio_stack.shape[0] != self.n_proprio_stack * self.proprio_size:
-                print(proprio_stack.shape[0], self.proprio_size)
+                #print(proprio_stack.shape[0], self.proprio_size)
                 continue
 
             delta_eef_pos = self.dpos[t_ind][time_ind]
