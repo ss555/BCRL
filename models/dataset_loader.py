@@ -106,12 +106,15 @@ class RoboTurkDataset:
             self.rotation = np.load(self.dataset_path + prefix + 'rotation.npy')
             self.gripper = np.load(self.dataset_path + prefix + 'grasp.npy')
 
-            self.images = np.random.shuffle(self.images)
-            self.proprio = np.random.shuffle(self.proprio)
-            self.eef = np.random.shuffle(self.eef)
-            self.dpos = np.random.shuffle(self.dpos)
-            self.rotation = np.random.shuffle(self.rotation)
-            self.gripper = np.random.shuffle(self.gripper)
+            indices = np.arange(len(self.images))
+            self.images = np.random.shuffle(indices)
+
+            self.images = [self.images[i] for i in indices]
+            self.proprio = [self.proprio[i] for i in indices]
+            self.eef = [self.eef[i] for i in indices]
+            self.dpos = [self.dpos[i] for i in indices]
+            self.rotation = [self.rotation[i] for i in indices]
+            self.gripper = [self.gripper[i] for i in indices]
 
             self.eval_images = np.array(self.images[-self.n_valid:])
             self.eval_proprio = np.array(self.proprio[-self.n_valid:])
