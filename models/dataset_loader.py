@@ -97,7 +97,7 @@ class RoboTurkDataset:
             prefix = '/real_' if self.real else '/sim_'
             encoding = 'bytes' if self.real else 'ASCII'
 
-            np.random.seed(0)
+            np.random.seed(1)
 
             self.images = np.load(self.dataset_path + prefix + 'image.npy', encoding=encoding)
             self.proprio = np.load(self.dataset_path + prefix + 'joint_states.npy', encoding=encoding)
