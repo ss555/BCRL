@@ -38,6 +38,8 @@ class RoboTurkDataset:
         self.real = real
         self.using_robot =  using_robot
         self.n_valid = n_valid
+
+        assert image_size == (120, 160, 3)
         self.image_size = image_size
         self.n_proprio_stack = n_proprio_stack
 
@@ -149,7 +151,7 @@ class RoboTurkDataset:
             t_ind = traj_inds[traj_ind]
             traj = self.images[t_ind]
 
-            time_ind = np.random.randint(0, len(traj))
+            time_ind = np.random.randint(1, len(traj)-1)
 
             if time_ind < self.n_proprio_stack - 1:
                 to_stack = [ np.zeros(self.proprio_size) for _ in range(self.n_proprio_stack - time_ind - 1)]
@@ -171,7 +173,7 @@ class RoboTurkDataset:
                 #print(proprio_stack.shape[0], self.proprio_size)
                 continue
 
-            delta_eef_pos = self.dpos[t_ind][time_ind]
+            delta_eef_pos = self.eef[t_ind][time_ind+1][:3] - self.eef[t_ind][time_ind][:3] 
 
             if time_ind == 0:
                 euler_rotation = np.array([0,0.57,1.5708])
@@ -199,7 +201,9 @@ class RoboTurkDataset:
 
             image = self.images[t_ind][time_ind]
             image = cv2.resize(image, self.image_size[:-1])
+            image = np.transpose(image, (1,0,2))
 
+            
             eef = self.eef[t_ind][time_ind]
             goal = self.goals[t_ind]
 

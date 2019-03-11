@@ -5,6 +5,8 @@ import os
 from os import path
 import json
 
+from optimizer import ADAMW
+
 import RobotTeleop.utils as RU
 
 try:
@@ -36,6 +38,7 @@ class BC:
         action_size, batch_size, proprio_history=5, real=False, using_robot=False, use_resnet=False):
 
         self.proprio_history = proprio_history
+        assert image_size == (120,160, 3)
         self.image_size = image_size
         self.proprio_size = (proprio_size[0] * self.proprio_history,)
         self.action_size = action_size
@@ -44,7 +47,7 @@ class BC:
         self.real = real
         self.use_resnet = use_resnet
 
-        self.dset = RoboTurkDataset(dataset_location, n_valid=1, real=real, using_robot=using_robot, 
+        self.dset = RoboTurkDataset(dataset_location, n_valid=5, real=real, using_robot=using_robot, 
                                     image_size=self.image_size, n_proprio_stack=proprio_history)
         self.dataset = self.dset.make_tf_dataset(self.batch_size)
         
@@ -58,7 +61,7 @@ class BC:
         with tf.variable_scope('Loss'):
             self.build_loss()
 
-        with tf.variable_scope('Summaries'):
+        with tf.variable_scope('Summaries', reuse=tf.AUTO_REUSE):
             self.build_summaries()
 
 
@@ -109,6 +112,7 @@ class BC:
                 outputs = resnet(self.inputs['image'], training=True)
                 self.conv_out = tf.stop_gradient(tf.layers.flatten(outputs))
         else:
+            """
             with tf.variable_scope('CNNStem', reuse=eval):
                 if eval:
                     self.image_obs = tf.placeholder(shape=(1, self.image_size[0], self.image_size[1], self.image_size[2]),
@@ -118,10 +122,8 @@ class BC:
                 else:
                     hid = tf.layers.conv2d(self.inputs['image'], 16, kernel_size=2, padding='same', activation=tf.nn.relu, name='conv1')
 
-                hid = tf.layers.max_pooling2d(inputs=hid, pool_size=[2, 2], strides=2)
                 hid = tf.layers.conv2d(hid, 32, kernel_size=2, padding='same', activation=tf.nn.relu, name='conv2')
 
-                hid = tf.layers.max_pooling2d(inputs=hid, pool_size=[2, 2], strides=2)
                 if not eval:
                     self.spatial_softmax = tf.contrib.layers.spatial_softmax(hid)
                     self.eef_predict = tf.layers.dense(self.spatial_softmax, 3, name='eef_pos_predict')
@@ -137,15 +139,50 @@ class BC:
                     self.eval_conv_out = tf.identity(hid)
                 else:
                     self.conv_out = tf.identity(hid)
+            """
+            with tf.variable_scope('CNNStem', reuse=eval):
+                if eval:
+                    self.image_obs = tf.placeholder(shape=(1, self.image_size[0], self.image_size[1], self.image_size[2]),
+                                                    dtype=tf.float32, name='image_input')
+                    inpt = self.image_obs
+                else:
+                    inpt = self.inputs['image']
+                    
+                hid = tf.layers.conv2d(inpt, 64, kernel_size=7, strides=2, padding='same', activation=tf.nn.relu, name='conv1')
+                hid = tf.layers.conv2d(hid, 32, kernel_size=1, strides=1, padding='same', activation=tf.nn.relu, name='conv2')
+                hid = tf.layers.conv2d(hid, 32, kernel_size=3, strides=1, padding='same', activation=tf.nn.relu, name='conv3')
+                hid = tf.layers.conv2d(hid, 32, kernel_size=3, strides=1, padding='same', activation=tf.nn.relu, name='conv4')
 
+                if eval:
+                    hid = tf.contrib.layers.spatial_softmax(hid)
+                    self.eval_eef_predict = tf.stop_gradient(tf.layers.dense(hid, 3, name='eef_pos_predict'))
+                    self.eval_goal_predict = tf.stop_gradient(tf.layers.dense(hid, 3, name='eef_goal_pos_predict'))
+                else:
+                    self.spatial_softmax = tf.contrib.layers.spatial_softmax(hid)
+                    self.eef_predict = tf.layers.dense(self.spatial_softmax, 3, name='eef_pos_predict')
+                    self.goal_predict = tf.layers.dense(self.spatial_softmax, 3, name='eef_goal_pos_predict')
+                    hid = self.spatial_softmax
+
+                hid = tf.layers.flatten(hid, name='flatten')
+                hid = tf.layers.dense(hid, 256, name='fc_conv_out', activation=tf.nn.relu)
+
+                if eval:
+                    self.eval_conv_out = tf.identity(hid)
+                else:
+                    self.conv_out = tf.identity(hid)
+                    
         with tf.variable_scope('concat', reuse=eval):
             if eval:
                 self.proprio_obs = tf.placeholder(shape=(1, self.proprio_size[0]), dtype=tf.float32, name='proprio_input')
-                #self.eval_concatted = self.proprio_obs
-                self.eval_concatted = tf.concat([self.eval_conv_out, self.proprio_obs], -1, name='EvalFullInputs')
+                #self.eval_concatted = tf.concat([self.eval_conv_out, self.proprio_obs], -1, name='EvalFullInputs')
+                self.eval_concatted = tf.concat([self.eval_conv_out, self.proprio_obs,
+                                                 self.eval_eef_predict, self.eval_goal_predict], -1, name='EvalFullInput')
+
             else:
-                #self.concatted = self.inputs['proprio']
-                self.concatted = tf.concat([self.conv_out, self.inputs['proprio']], -1, name='FullInputs')
+                #self.concatted = tf.concat([self.conv_out, self.inputs['proprio']], -1, name='FullInputs')
+                self.concatted = tf.concat([self.conv_out, self.inputs['proprio'],
+                                            tf.stop_gradient(self.eef_predict),
+                                            tf.stop_gradient(self.goal_predict)], -1, name='FullInput')
 
         with tf.variable_scope('PredictAction', reuse=eval):
             if eval:
@@ -160,7 +197,6 @@ class BC:
 
             else:
                 hid = tf.layers.dense(self.concatted, 512, name='fc1', activation=tf.nn.relu)
-                hid = tf.layers.dropout(hid, rate=0.3)
                 hid = tf.layers.dense(hid, 256, name='fc2', activation=tf.nn.relu)
 
                 self.delta_pos = tf.layers.dense(hid, 3, activation=tf.nn.tanh, name='fc_pos')
@@ -180,8 +216,6 @@ class BC:
         })
 
     def build_loss(self):
-        # TODO: Loss on location of object
-
         gt_delta_pos = self.inputs['delta_eef_pos']
         gt_delta_rotation = self.inputs['delta_eef_rotation']
         gt_gripper = tf.reshape(self.inputs['gripper'], (-1, 1))
@@ -189,8 +223,6 @@ class BC:
         gt_goal = self.inputs['goal']
 
         gt_eef_pos = gt_eef[:,:3]
-
-
 
         pred_delta_pos = self.delta_pos
         pred_delta_rotation = self.delta_quat
@@ -213,13 +245,13 @@ class BC:
         #self.lg = tf.losses.sigmoid_cross_entropy(gt_gripper, pred_gripper)
         self.lg = tf.losses.absolute_difference(gt_gripper, pred_gripper)  # sim is not binary
 
-        self.loss = ( 1. * self.l2 + 1* self.l1 + 1.0 * self.lg + 1.* self.lc + 1. * self.leef + 1. * self.lgoal)
+        self.loss = ( 1. * self.l2 + 1* self.l1 + 1.0 * self.lg + 5.* self.lc + 1. * self.leef + 1. * self.lgoal)
 
         self.regularization_loss = 0.01 * tf.reduce_sum([
             tf.nn.l2_loss(var) for var in tf.trainable_variables() if 'kernel' in var.name
         ])
 
-        self.loss += self.regularization_loss
+        #self.loss += self.regularization_loss
 
     def iterate(self):
 
@@ -266,9 +298,21 @@ if __name__ == '__main__':
         raise ValueError('You do not surreal or robosuite and thus cannot work in sim')
 
     if args.use_resnet:
-        img_size = 224
+        img_size = (224, 224)
     else:
-        img_size = 84
+        img_size = (120, 160)
+
+    global_step = tf.train.get_or_create_global_step()
+    #global_step = tf.assign_add(global_step, 1)
+
+    #lr = 0.001
+    lr = tf.train.exponential_decay(0.001, global_step, 100000, 0.95, staircase=True) 
+    #optimizer = tf.train.AdamOptimizer(learning_rate=lr)
+    optimizer = ADAMW(lr, 0.001, batch_size=32, epoch_size=10000, epochs=400)
+
+    with tf.variable_scope('Summaries'):
+        tf.summary.scalar('LR', lr)
+
 
     if not args.real:
         """
@@ -295,23 +339,24 @@ if __name__ == '__main__':
         thread = threading.Thread(target=thunk)
         thread.start()
         """
-        b = BC(dataset_dir, (img_size,img_size,3), (30,), (8,), 32, real=False, use_resnet=use_resnet)
+        b = BC(dataset_dir, (*img_size,3), (30,), (8,), 32, real=False, use_resnet=use_resnet)
 
         eval_images = b.dset.eval_images
         eval_proprio = b.dset.eval_proprio
         eval_dpos = b.dset.eval_dpos
         eval_rotation = b.dset.eval_rotation
+        eval_eef = b.dset.eval_eef
     else:
         thread = None
         import pickle
 
-        b = BC(dataset_dir, (img_size,img_size,3), (18,), (8,), 32, real=True, use_resnet=use_resnet)
+        b = BC(dataset_dir, (*img_size,3), (18,), (8,), 32, real=True, use_resnet=use_resnet)
 
         eval_images = b.dset.eval_images
         eval_proprio = b.dset.eval_proprio
         eval_dpos = b.dset.eval_dpos
         eval_rotation = b.dset.eval_rotation
-
+        eval_eef = b.dset.eval_eef
 
     if not os.path.isdir(log_dir):
         os.makedirs(log_dir)
@@ -319,18 +364,8 @@ if __name__ == '__main__':
         os.makedirs(checkpoint_dir)
 
 
-    global_step = tf.train.get_or_create_global_step()
-    global_step = tf.assign_add(global_step, 1)
-
-    #lr = 0.001
-    global_step = tf.Variable(0, trainable=False)
-    lr = tf.train.exponential_decay(0.001, global_step, 10000, 0.96, staircase=True) 
-    #lr = tf.train.cosine_decay_restarts(0.001, global_step, 10000)
-    #optimizer = tf.contrib.opt.AdamWOptimizer(0.001, learning_rate=lr) #better weight decay probably
-    optimizer = tf.train.AdamOptimizer(learning_rate=lr)
-
     saver = tf.train.Saver(max_to_keep=5)
-    train_op = optimizer.minimize(b.loss)
+    train_op = optimizer.minimize(b.loss, global_step=global_step)
     writer = tf.summary.FileWriter(log_dir)
 
     iteration = 0
@@ -392,10 +427,10 @@ if __name__ == '__main__':
                     print('Reward: {}'.format(reward))
                 else:
                     losses = 0
-                    for traj in range(1):
+                    for traj in range(b.dset.n_eval):
                         pos_direction_err = 0
                         quat_error = 0
-                        for i in range(len(eval_proprio[traj])):
+                        for i in range(len(eval_proprio[traj])-1):
                             t_ind = traj
                             time_ind = i
                             if time_ind < 4:
@@ -419,12 +454,13 @@ if __name__ == '__main__':
                                 continue
   
                             img, proprio = eval_images[traj][i], proprio_stack
-                            img = cv2.resize(img, (img_size,img_size))
+                            img = cv2.resize(img, img_size)
+                            img = np.transpose(img, (1,0,2))
                             img = img.astype(np.float32)
 
                             dpos, drot, gripper = b.get_action([img], [proprio])
 
-                            g_dpos = eval_dpos[traj][i]
+                            g_dpos = eval_eef[traj][i+1][:3] - eval_eef[traj][i][:3] #eval_dpos[traj][i]
                             if i == 0:
                                 euler_rotation = np.array([0,0.57,1.5708])
 
@@ -448,7 +484,9 @@ if __name__ == '__main__':
 
                             dpos, drot, g_dpos, g_drot = np.ravel(dpos), np.ravel(drot), np.ravel(g_dpos), np.ravel(g_drot)
 
-                            pos_direction_err += np.arccos(1. - scipy.spatial.distance.cosine(dpos, g_dpos)) #np.arccos(cos_err)
+                            check = 1. - scipy.spatial.distance.cosine(dpos, g_dpos)
+                            if not np.isnan(check):
+                                pos_direction_err += np.arccos(check) #np.arccos(cos_err)
                             quat_error += np.arccos(2 * np.dot(g_drot, drot)**2 - 1) #np.sum(np.abs(g_drot - drot))
 
                         print('Traj {} MEAN errors: Pos: {}\tQuat: {}'.format(traj, pos_direction_err/len(eval_proprio[traj]), quat_error/len(eval_proprio[traj])))
