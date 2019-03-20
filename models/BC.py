@@ -99,13 +99,13 @@ class BC:
             )
             if eval:
                 with tf.variable_scope(tf.get_variable_scope(), reuse=True):
-                    self.image_obs = tf.placeholder(shape=(1, self.image_size[0], self.image_size[1], self.image_size[2]),
+                    self.image_obs = tf.placeholder(shape=(None, self.image_size[0], self.image_size[1], self.image_size[2]),
                                                     dtype=tf.float32, name='image_input')
 
                     outputs = resnet(self.image_obs, training=True)
                     self.eval_conv_out = tf.stop_gradient(tf.layers.flatten(outputs))
             else:
-                self.image_obs = tf.placeholder(shape=(1, self.image_size[0], self.image_size[1], self.image_size[2]),
+                self.image_obs = tf.placeholder(shape=(None, self.image_size[0], self.image_size[1], self.image_size[2]),
                                                 dtype=tf.float32, name='image_input')
 
                 outputs = resnet(self.inputs['image'], training=True)
@@ -113,7 +113,7 @@ class BC:
         else:
             with tf.variable_scope('CNNStem', reuse=eval):
                 if eval:
-                    self.image_obs = tf.placeholder(shape=(1, self.image_size[0], self.image_size[1], self.image_size[2]),
+                    self.image_obs = tf.placeholder(shape=(None, self.image_size[0], self.image_size[1], self.image_size[2]),
                                                     dtype=tf.float32, name='image_input')
                     inpt = self.image_obs
                 else:
@@ -126,8 +126,8 @@ class BC:
 
                 if eval:
                     hid = tf.contrib.layers.spatial_softmax(hid)
-                    self.eval_eef_predict = tf.stop_gradient(tf.layers.dense(hid, 3, name='eef_pos_predict'))
-                    self.eval_goal_predict = tf.stop_gradient(tf.layers.dense(hid, 3, name='eef_goal_pos_predict'))
+                    self.eval_eef_predict = tf.layers.dense(hid, 3, name='eef_pos_predict')
+                    self.eval_goal_predict = tf.layers.dense(hid, 3, name='eef_goal_pos_predict')
                 else:
                     self.spatial_softmax = tf.contrib.layers.spatial_softmax(hid)
                     self.eef_predict = tf.layers.dense(self.spatial_softmax, 3, name='eef_pos_predict')
