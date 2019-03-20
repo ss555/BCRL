@@ -5,7 +5,7 @@ import os
 from os import path
 import json
 
-from optimizer import ADAMW
+from .optimizer import ADAMW
 
 import RobotTeleop.utils as RU
 
@@ -31,14 +31,13 @@ import collections
 import matplotlib.pyplot as plt
 import argparse
 import scipy
-from dataset_loader import RoboTurkDataset
+from .dataset_loader import RoboTurkDataset
 
 class BC:
     def __init__(self, dataset_location, image_size, proprio_size, 
         action_size, batch_size, proprio_history=5, real=False, using_robot=False, use_resnet=False):
 
         self.proprio_history = proprio_history
-        assert image_size == (120,160, 3)
         self.image_size = image_size
         self.proprio_size = (proprio_size[0] * self.proprio_history,)
         self.action_size = action_size
@@ -112,34 +111,6 @@ class BC:
                 outputs = resnet(self.inputs['image'], training=True)
                 self.conv_out = tf.stop_gradient(tf.layers.flatten(outputs))
         else:
-            """
-            with tf.variable_scope('CNNStem', reuse=eval):
-                if eval:
-                    self.image_obs = tf.placeholder(shape=(1, self.image_size[0], self.image_size[1], self.image_size[2]),
-                                                    dtype=tf.float32, name='image_input')
-
-                    hid = tf.layers.conv2d(self.image_obs, 16, kernel_size=2, padding='same', activation=tf.nn.relu, name='conv1')
-                else:
-                    hid = tf.layers.conv2d(self.inputs['image'], 16, kernel_size=2, padding='same', activation=tf.nn.relu, name='conv1')
-
-                hid = tf.layers.conv2d(hid, 32, kernel_size=2, padding='same', activation=tf.nn.relu, name='conv2')
-
-                if not eval:
-                    self.spatial_softmax = tf.contrib.layers.spatial_softmax(hid)
-                    self.eef_predict = tf.layers.dense(self.spatial_softmax, 3, name='eef_pos_predict')
-                    self.goal_predict = tf.layers.dense(self.spatial_softmax, 3, name='eef_goal_pos_predict')
-                    inpt = self.spatial_softmax
-                else:
-                    inpt = tf.contrib.layers.spatial_softmax(hid)
-
-                hid = tf.layers.flatten(inpt, name='flatten')
-                hid = tf.layers.dense(hid, 256, name='fc_conv_out', activation=tf.nn.relu)
-
-                if eval:
-                    self.eval_conv_out = tf.identity(hid)
-                else:
-                    self.conv_out = tf.identity(hid)
-            """
             with tf.variable_scope('CNNStem', reuse=eval):
                 if eval:
                     self.image_obs = tf.placeholder(shape=(1, self.image_size[0], self.image_size[1], self.image_size[2]),
@@ -147,7 +118,7 @@ class BC:
                     inpt = self.image_obs
                 else:
                     inpt = self.inputs['image']
-                    
+
                 hid = tf.layers.conv2d(inpt, 64, kernel_size=7, strides=2, padding='same', activation=tf.nn.relu, name='conv1')
                 hid = tf.layers.conv2d(hid, 32, kernel_size=1, strides=1, padding='same', activation=tf.nn.relu, name='conv2')
                 hid = tf.layers.conv2d(hid, 32, kernel_size=3, strides=1, padding='same', activation=tf.nn.relu, name='conv3')
@@ -170,23 +141,32 @@ class BC:
                     self.eval_conv_out = tf.identity(hid)
                 else:
                     self.conv_out = tf.identity(hid)
-                    
+
         with tf.variable_scope('concat', reuse=eval):
             if eval:
-                self.proprio_obs = tf.placeholder(shape=(1, self.proprio_size[0]), dtype=tf.float32, name='proprio_input')
+                self.proprio_obs = tf.placeholder(shape=(None, self.proprio_size[0]), dtype=tf.float32, name='proprio_input')
                 #self.eval_concatted = tf.concat([self.eval_conv_out, self.proprio_obs], -1, name='EvalFullInputs')
+                #self.eval_concatted = tf.concat([self.eval_conv_out, self.proprio_obs,
+                #                                self.eval_eef_predict, self.eval_goal_predict], -1, name='EvalFullInput')
+
                 self.eval_concatted = tf.concat([self.eval_conv_out, self.proprio_obs,
-                                                 self.eval_eef_predict, self.eval_goal_predict], -1, name='EvalFullInput')
+                                                 self.eval_eef_predict], -1, name='EvalFullInput')
+
 
             else:
                 #self.concatted = tf.concat([self.conv_out, self.inputs['proprio']], -1, name='FullInputs')
+                #self.concatted = tf.concat([self.conv_out, self.inputs['proprio'],
+                #                           tf.stop_gradient(self.eef_predict),
+                #                           tf.stop_gradient(self.goal_predict)], -1, name='FullInput')
+
                 self.concatted = tf.concat([self.conv_out, self.inputs['proprio'],
-                                            tf.stop_gradient(self.eef_predict),
-                                            tf.stop_gradient(self.goal_predict)], -1, name='FullInput')
+                                            self.eef_predict], -1, name='FullInput')
 
         with tf.variable_scope('PredictAction', reuse=eval):
             if eval:
-                hid = tf.layers.dense(self.eval_concatted, 512, name='fc1', activation=tf.nn.relu)
+                #hid = tf.layers.dense(self.eval_concatted, 256, name='fc1', activation=tf.nn.relu)
+                self.value_hid = tf.identity(hid)
+
                 hid = tf.layers.dense(hid, 256, name='fc2', activation=tf.nn.relu)
 
                 self.eval_delta_pos = tf.layers.dense(hid, 3, activation=tf.nn.tanh, name='fc_pos')
@@ -196,7 +176,8 @@ class BC:
                 self.eval_gripper_output = tf.layers.dense(hid, 1, name='fc_gripper')
 
             else:
-                hid = tf.layers.dense(self.concatted, 512, name='fc1', activation=tf.nn.relu)
+                #hid = tf.layers.dense(self.concatted, 512, name='fc1', activation=tf.nn.relu)
+
                 hid = tf.layers.dense(hid, 256, name='fc2', activation=tf.nn.relu)
 
                 self.delta_pos = tf.layers.dense(hid, 3, activation=tf.nn.tanh, name='fc_pos')
@@ -229,7 +210,7 @@ class BC:
         pred_gripper = tf.reshape(self.gripper_output, (-1,1))
 
         self.leef = tf.losses.mean_squared_error(gt_eef_pos, self.eef_predict)
-        self.lgoal = tf.losses.mean_squared_error(gt_goal, self.goal_predict)
+        self.lgoal = 0 #tf.losses.mean_squared_error(gt_goal, self.goal_predict)
 
         self.l2 = tf.losses.mean_squared_error(gt_delta_pos, pred_delta_pos)
 
@@ -247,11 +228,11 @@ class BC:
 
         self.loss = ( 1. * self.l2 + 1* self.l1 + 1.0 * self.lg + 5.* self.lc + 1. * self.leef + 1. * self.lgoal)
 
-        self.regularization_loss = 0.01 * tf.reduce_sum([
+        self.regularization_loss = 0.001 * tf.reduce_sum([
             tf.nn.l2_loss(var) for var in tf.trainable_variables() if 'kernel' in var.name
         ])
 
-        #self.loss += self.regularization_loss
+        self.loss += self.regularization_loss
 
     def iterate(self):
 
@@ -300,29 +281,30 @@ if __name__ == '__main__':
     if args.use_resnet:
         img_size = (224, 224)
     else:
-        img_size = (120, 160)
+        img_size = (84, 84)
 
     global_step = tf.train.get_or_create_global_step()
-    #global_step = tf.assign_add(global_step, 1)
 
-    #lr = 0.001
-    lr = tf.train.exponential_decay(0.001, global_step, 100000, 0.95, staircase=True) 
-    #optimizer = tf.train.AdamOptimizer(learning_rate=lr)
-    optimizer = ADAMW(lr, 0.001, batch_size=32, epoch_size=10000, epochs=400)
+    lr = 0.0001
+    #lr = tf.train.exponential_decay(0.001, global_step, 100000, 0.95, staircase=True) 
+    optimizer = tf.train.AdamOptimizer(learning_rate=lr)
+    #optimizer = ADAMW(lr, 0.001, batch_size=32, epoch_size=10000, epochs=400)
 
     with tf.variable_scope('Summaries'):
         tf.summary.scalar('LR', lr)
 
 
     if not args.real:
-        """
         folder = '/home/jonathan/surreal-tmux/lift2'
         configs = restore_config(path.join(folder, 'config.yml'))
         env_config = configs.env_config
 
-        env, env_config = restore_env(env_config)
-        env = IKWrapper(env.unwrapped)
+        env_config.render = False
 
+
+        env, env_config = restore_env(env_config)
+        env = IKWrapper(env.unwrapped, action_repeat=15)
+ 
         env2, env_config2 = restore_env(env_config)
 
         def thunk():
@@ -333,12 +315,11 @@ if __name__ == '__main__':
                 state = env.unwrapped.sim.get_state()
                 env2.unwrapped.sim.set_state(state)
                 env2.unwrapped.sim.step()
-                #print(state)
                 viewer.render()
         import threading
         thread = threading.Thread(target=thunk)
         thread.start()
-        """
+        
         b = BC(dataset_dir, (*img_size,3), (30,), (8,), 32, real=False, use_resnet=use_resnet)
 
         eval_images = b.dset.eval_images
@@ -398,7 +379,7 @@ if __name__ == '__main__':
 
             if iteration % 1000 == 0:
                 saver.save(sess, '{}/model'.format(checkpoint_dir), global_step=gstep)
-                if False: #not args.real:
+                if not args.real:
                     reward = 0
                     ob = env.reset()
                     window = collections.deque(maxlen=5)
@@ -411,8 +392,9 @@ if __name__ == '__main__':
                         #print(aux)
                         window.append(np.array(aux['robot-state']).ravel())
                         #window.append(np.concatenate([aux['eef_pos'], aux['eef_quat'], aux['gripper_qvel'], aux['gripper_qpos']]))
-
-                        dpos, drot, gripper = b.get_action([np.transpose(ob['image'],(0,1,2))], np.array(window).reshape(1, -1))
+                        img = cv2.resize(ob['image'], img_size)
+                        imgs = np.transpose(img, (1,0,2))
+                        dpos, drot, gripper = b.get_action([img], np.array(window).reshape(1, -1))
                         #drot = np.array([0.,0.,0.,1.])
                         drot = np.ravel(drot)
                         drot /= np.linalg.norm(drot)
@@ -421,13 +403,13 @@ if __name__ == '__main__':
                         ob, r, _, _ = env.step(a)
 
                         elapsed = time.time() - start
-                        print(elapsed, )
-                        time.sleep(max(start + 1./10 - time.time(), 0))
+                        #print(elapsed, )
+                        #time.sleep(max(start + 1./10 - time.time(), 0))
                         reward += r
                     print('Reward: {}'.format(reward))
                 else:
                     losses = 0
-                    for traj in range(b.dset.n_eval):
+                    for traj in range(b.dset.n_valid):
                         pos_direction_err = 0
                         quat_error = 0
                         for i in range(len(eval_proprio[traj])-1):

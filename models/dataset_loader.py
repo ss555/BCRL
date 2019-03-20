@@ -39,7 +39,6 @@ class RoboTurkDataset:
         self.using_robot =  using_robot
         self.n_valid = n_valid
 
-        assert image_size == (120, 160, 3)
         self.image_size = image_size
         self.n_proprio_stack = n_proprio_stack
 
@@ -173,7 +172,8 @@ class RoboTurkDataset:
                 #print(proprio_stack.shape[0], self.proprio_size)
                 continue
 
-            delta_eef_pos = self.eef[t_ind][time_ind+1][:3] - self.eef[t_ind][time_ind][:3] 
+            delta_eef_pos = self.dpos[t_ind][time_ind]
+            #delta_eef_pos = self.eef[t_ind][time_ind+1][:3] - self.eef[t_ind][time_ind][:3] 
 
             if time_ind == 0:
                 euler_rotation = np.array([0,0.57,1.5708])

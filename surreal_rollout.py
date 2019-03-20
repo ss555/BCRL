@@ -98,6 +98,7 @@ if __name__ == "__main__":
     env_config.eval_mode.render = render
     env, env_config = restore_env(env_config)
 
+
     # restore the agent
     agent = restore_agent(PPOAgent, learner_config, env_config, session_config, model)
     print("Successfully loaded agent and model!")
@@ -112,6 +113,8 @@ if __name__ == "__main__":
     proprio = []
     gripper = []
     eef = []
+    dpos = []
+    rotation = []
 
     for _ in range(100):
         if len(states):
@@ -125,7 +128,7 @@ if __name__ == "__main__":
             env.unwrapped.viewer.viewer._hide_overlay = True
             env.unwrapped.viewer.set_camera(0)
 
-        buff = {'images': [], 'proprio': [], 'gripper': [], 'eef': []}
+        buff = {'images': [], 'proprio': [], 'gripper': [], 'eef': [], 'dpos': [], 'rotation': []}
         for i in range(200):
             a = agent.act(ob)
             a += np.random.normal(loc=0.0, scale=0.1, size=a.shape)
@@ -138,8 +141,11 @@ if __name__ == "__main__":
             buff['eef'].append(np.concatenate([aux['eef_pos'], aux['eef_quat'], aux['gripper_qvel'], aux['gripper_qpos']]))
             buff['gripper'].append(a[-1])     #aux['gripper_qpos'])
 
-            ob, r, _, _ = env.step(a)
+            buff['dpos'].append(a[:3])
+            buff['rotation'].append(buff['proprio'][-1][3:3+4])
             
+
+            ob, r, _, _ = env.step(a)
 
             if render:
                 env.unwrapped.render()
@@ -149,12 +155,13 @@ if __name__ == "__main__":
         images.append(buff['images'])
         proprio.append(buff['proprio'])
         gripper.append(buff['gripper'])
-        
+
+        dpos.append(buff['dpos'])
+        rotation.append(buff['rotation'])
         print("return: {}".format(ret))
 
 
-    dpos = []
-    rotation = []
+    """
     for i in range(len(images)):
         buff = {'dpos': [], 'rotation': []}
         for j in range(1, len(images[i])):
@@ -165,13 +172,13 @@ if __name__ == "__main__":
 
         dpos.append(buff['dpos'])
         rotation.append(buff['rotation'])
-
         images[i] = images[i][:-1]
         proprio[i] = proprio[i][:-1]
 
         assert len(dpos[i]) == 199
         assert len(dpos[i]) == len(images[i])
         assert len(dpos[i]) == len(proprio[i])
+    """
     """
     states = states[:-1]
     print(len(states), len(delta_eef_pos), len(delta_eef_rotation))
