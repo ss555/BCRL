@@ -246,7 +246,7 @@ def main(num_episodes, gamma, lam, batch_size):
     normalizer_states = Normalizer(obs_dim['robot-state'])
     normalizer_imgs = Normalizer(obs_dim['image'])
 
-    policy = PPO(obs_dim['robot-state'], act_dim, './eef_1')
+    policy = PPO(obs_dim['robot-state'], act_dim, './eef')
     sess = tf.get_default_session()
     sess.run(tf.global_variables_initializer())
 

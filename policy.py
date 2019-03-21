@@ -63,6 +63,9 @@ class PPOPolicy:
             self.entropy = 0.5 * (self.n_actions * (np.log(2 * np.pi) + 1) +
                                   tf.reduce_sum(self.logsig))
 
+            tf.summary.scalar('entropy', self.entropy)
+            tf.summary.scalar('kl', self.kl)
+
         with tf.variable_scope('Sample'):
             self.sample_op = (self.means +
                               tf.exp(self.logsig / 2.0) *
@@ -78,10 +81,17 @@ class PPOPolicy:
 
         self.loss = -tf.reduce_mean(surrogate_loss) + value_loss
 
-        step = tf.maximum(self.global_step - 1000, 0)
+        tf.summary.scalar('surrogate_loss', tf.reduce_mean(surrogate_loss))
+        tf.summary.scalar('value_loss', value_loss)
+        tf.summary.scalar('L_RL', self.loss)
+
+        step = tf.maximum(self.global_step - 10000, 0)
         self.lam = tf.train.exponential_decay(1., step, 1000, 0.9, staircase=True)
         self.loss *= ( 1. - self.lam)
         self.loss += self.lam * self.b.loss
+
+        tf.summary.scalar('RL+BC_LOSS', self.loss)
+        tf.summary.scalar('BC_LOSS', self.b.loss)
 
 
     def sample(self, obs, image=None):
@@ -101,18 +111,29 @@ class PPOPolicy:
 
 class PPO:
 
-    def __init__(self, obs_size, n_actions, init_logsig=-1., clip_range=0.2, n_optimize=20):
+    def __init__(self, obs_size, n_actions, dataset_dir, init_logsig=-10., clip_range=0.2, n_optimize=20):
 
         self.n_optimize = n_optimize
 
         self.global_step = tf.train.get_or_create_global_step()
         self.global_step = tf.assign_add(self.global_step, 1)
-        self.model = PPOPolicy(obs_size, n_actions, init_logsig, clip_range, global_step=self.global_step)
+        self.model = PPOPolicy(obs_size, n_actions, dataset_dir, init_logsig, clip_range, global_step=self.global_step)
 
         with tf.variable_scope('Optimizer'):
 
             self.optimizer = tf.train.AdamOptimizer()
             self.train_op = self.optimizer.minimize(self.model.loss, global_step=self.global_step)
+
+
+        self.merged = tf.summary.merge_all()
+
+        import os
+        if not os.path.isdir('./logs_bcrl'):
+            os.mkdir('./logs_bcrl')
+
+        self.writer = tf.summary.FileWriter('./logs_bcrl')
+        self.writer.add_graph(tf.get_default_graph())
+
 
     def sample(self, obs, image=None):
         return self.model.sample(obs, (image - self.model.b.dset.image_mean)*self.model.b.dset.image_std)
@@ -150,4 +171,6 @@ class PPO:
             feed_dict[self.model.oldlogsig] = old_log_vars_np
             feed_dict[self.model.oldmeans] = old_means_np
 
-            sess.run(self.train_op, feed_dict)
+            _, summary, gstep = sess.run([self.train_op, self.merged, self.global_step], feed_dict)
+            self.writer.add_summary(summary, global_step=gstep)
+            self.writer.flush()

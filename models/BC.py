@@ -164,7 +164,7 @@ class BC:
 
         with tf.variable_scope('PredictAction', reuse=eval):
             if eval:
-                #hid = tf.layers.dense(self.eval_concatted, 256, name='fc1', activation=tf.nn.relu)
+                hid = tf.layers.dense(self.eval_concatted, 256, name='fc1', activation=tf.nn.relu)
                 self.value_hid = tf.identity(hid)
 
                 hid = tf.layers.dense(hid, 256, name='fc2', activation=tf.nn.relu)
@@ -176,8 +176,7 @@ class BC:
                 self.eval_gripper_output = tf.layers.dense(hid, 1, name='fc_gripper')
 
             else:
-                #hid = tf.layers.dense(self.concatted, 512, name='fc1', activation=tf.nn.relu)
-
+                hid = tf.layers.dense(self.concatted, 256, name='fc1', activation=tf.nn.relu)
                 hid = tf.layers.dense(hid, 256, name='fc2', activation=tf.nn.relu)
 
                 self.delta_pos = tf.layers.dense(hid, 3, activation=tf.nn.tanh, name='fc_pos')
@@ -226,7 +225,7 @@ class BC:
         #self.lg = tf.losses.sigmoid_cross_entropy(gt_gripper, pred_gripper)
         self.lg = tf.losses.absolute_difference(gt_gripper, pred_gripper)  # sim is not binary
 
-        self.loss = ( 1. * self.l2 + 1* self.l1 + 1.0 * self.lg + 5.* self.lc + 1. * self.leef + 1. * self.lgoal)
+        self.loss = ( 1. * self.l2 + 1* self.l1 + 1.0 * self.lg + 1.* self.lc + 1. * self.leef + 1. * self.lgoal)
 
         self.regularization_loss = 0.001 * tf.reduce_sum([
             tf.nn.l2_loss(var) for var in tf.trainable_variables() if 'kernel' in var.name
