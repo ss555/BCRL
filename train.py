@@ -129,18 +129,16 @@ def init_env():
 
     obs_dim = env.observation_space
     act_dim = env.action_space.shape[0]
-
     return env, obs_dim, act_dim
 
 
-def run_n_episodes(env, policy, normalizer_state, normalizer_image, episodes):
+def run_n_episodes(env, policy, normalizer_state, episodes):
     total_steps = 0
     trajectories = []
     for _ in range(episodes):
         done = False
-        images, states, actions, rewards, unscaled_imgs, unscaled_states, values = [], [], [], [], [], [], []
+        images, states, actions, rewards, unscaled_states, values = [], [], [], [], [], []
         var_state, mean_state = normalizer_state.get()
-        var_image, mean_image = normalizer_image.get()
 
         obs = env.reset()
 
@@ -153,11 +151,8 @@ def run_n_episodes(env, policy, normalizer_state, normalizer_image, episodes):
             img = obs['image']
             state = obs['robot-state']
 
-            #obs = obs.astype(np.float32).reshape((1, -1))
-            unscaled_imgs.append(img)
             unscaled_states.append(state)
 
-            #img = (img - mean_image) * var_image
             state = (state - mean_state)*var_state
             proprio_stack.append(state)
 
@@ -182,7 +177,6 @@ def run_n_episodes(env, policy, normalizer_state, normalizer_image, episodes):
         rewards = np.stack(rewards)
         actions = np.concatenate(actions)
         values = np.concatenate(values)
-        unscaled_imgs = np.concatenate(unscaled_imgs)
         unscaled_states = np.stack(unscaled_states)
 
         total_steps += images.shape[0]
@@ -190,40 +184,17 @@ def run_n_episodes(env, policy, normalizer_state, normalizer_image, episodes):
                       'states': states,
                       'actions': actions,
                       'rewards': rewards,
-                      'unscaled_imgs': unscaled_imgs,
                       'unscaled_states': unscaled_states,
                       'values': values
         }
         trajectories.append(trajectory)
     unscaled_state = np.concatenate([t['unscaled_states'] for t in trajectories])
-    unscaled_imgs = np.concatenate([t['unscaled_imgs'] for t in trajectories])
 
     normalizer_state.update(unscaled_state)
-    normalizer_image.update(unscaled_imgs)
 
     return trajectories
 
-def add_returns(trajectories, gamma):
-    for t in trajectories:
-        if gamma < 0.999:
-            rewards = t['rewards'] * (1 - gamma)
-        else:
-            rewards = t['rewards']
-        returns = scipy.signal.lfilter([1.0], [1.0, -gamma], rewards[::-1])[::-1]
-        t['returns'] = returns
-
-def add_gae(trajectories, gamma, lam):
-    for trajectory in trajectories:
-        if gamma < 0.999:
-            rewards = trajectory['rewards'] * (1 - gamma)
-        else:
-            rewards = trajectory['rewards']
-        values = trajectory['values']
-        tds = rewards - values + np.append(values[1:] * gamma, 0)
-        advantages = scipy.signal.lfilter([1.0], [1.0, -(gamma*lam)], tds[::-1])[::-1]
-        trajectory['advantages'] = advantages
-
-def main(num_episodes, gamma, lam, batch_size):
+def main(gamma=0.99, lam=0.98, batch_size=20):
 
     env, obs_dim, act_dim = init_env()
     env2, _, _ = init_env()
@@ -244,20 +215,33 @@ def main(num_episodes, gamma, lam, batch_size):
 
 
     normalizer_states = Normalizer(obs_dim['robot-state'])
-    normalizer_imgs = Normalizer(obs_dim['image'])
 
     policy = PPO(obs_dim['robot-state'], act_dim, './eef')
     sess = tf.get_default_session()
     sess.run(tf.global_variables_initializer())
 
-    run_n_episodes(env, policy, normalizer_states, normalizer_imgs, episodes=1)
-    episode = 0
-    while episode < num_episodes:
-        trajectories = run_n_episodes(env, policy, normalizer_states, normalizer_imgs, episodes=batch_size)
-        episode += len(trajectories)
+    run_n_episodes(env, policy, normalizer_states, episodes=1)
+    cntr = 0
+    while True:
+        cntr += 1
+        trajectories = run_n_episodes(env, policy, normalizer_states, episodes=batch_size)
 
-        add_returns(trajectories, gamma)
-        add_gae(trajectories, gamma, lam)
+        for t in trajectories:
+            if gamma < 0.999:
+                rewards = t['rewards'] * (1 - gamma)
+            else:
+                rewards = t['rewards']
+            returns = scipy.signal.lfilter([1.0], [1.0, -gamma], rewards[::-1])[::-1]
+            t['returns'] = returns
+        for trajectory in trajectories:
+            if gamma < 0.999:
+                rewards = trajectory['rewards'] * (1 - gamma)
+            else:
+                rewards = trajectory['rewards']
+            values = trajectory['values']
+            tds = rewards - values + np.append(values[1:] * gamma, 0)
+            advantages = scipy.signal.lfilter([1.0], [1.0, -(gamma*lam)], tds[::-1])[::-1]
+            trajectory['advantages'] = advantages
 
         images = np.concatenate([t['images'] for t in trajectories])
         states = np.concatenate([t['states'] for t in trajectories])
@@ -269,7 +253,7 @@ def main(num_episodes, gamma, lam, batch_size):
         sum_of_rewards = np.mean([np.sum(t['rewards']) for t in trajectories])
         print('Mean sum of rewards: {}'.format(sum_of_rewards))
 
-        if episode <= 11 * len(trajectories):
+        if cntr <= 20:
             rng = 10
         else:
             rng = 1
@@ -286,21 +270,8 @@ def main(num_episodes, gamma, lam, batch_size):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=('Train policy on OpenAI Gym environment '
-                                                  'using Proximal Policy Optimizer'))
-    parser.add_argument('-n', '--num_episodes', type=int, help='Number of episodes to run',
-                        default=10000000000000)
-    parser.add_argument('-g', '--gamma', type=float, help='Discount factor', default=0.995)
-    parser.add_argument('-l', '--lam', type=float, help='Lambda for Generalized Advantage Estimation',
-                        default=0.98)
-    parser.add_argument('-b', '--batch_size', type=int,
-                        help='Number of episodes per training batch',
-                        default=20)
-
-    args = parser.parse_args()
-
     import tensorflow as tf
     config = tf.ConfigProto(allow_soft_placement=True)
     #config.gpu_options.allow_growth = True
     with tf.Session(config=config) as sess:
-        main(**vars(args))
+        main()
